@@ -1,0 +1,33 @@
+[package]
+name = "ctdiff"
+version = "0.1.0"
+edition = "2021"
+authors = ["Tanya Arora"]
+description = "constant-time diff algorithm to prevent timing attacks"
+license = "GLPv3"
+repository = "https://github.com/tanctl/ctdiff"
+keywords = ["cryptography", "security", "diff", "constant-time"]
+categories = ["cryptography", "algorithms"]
+
+[dependencies]
+subtle = "2.5"
+serde = { version = "1.0", features = ["derive"] }
+
+[dev-dependencies]
+criterion = "0.5"
+proptest = "1.4"
+
+[[bench]]
+name = "primitives"
+harness = false
+
+[profile.release]
+# ensure optimizations don't break constant-time guarantees
+codegen-units = 1
+lto = true
+panic = "abort"
+
+[profile.bench]
+# optimization for benchmarks while preserving timing properties
+codegen-units = 1
+lto = true
