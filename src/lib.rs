@@ -13,5 +13,10 @@ pub mod primitives;
 pub mod types;
 pub mod algorithm;
 
+// attack demonstration modules (for research/demo purposes only)
+pub mod vulnerable;
+pub mod timing;
+pub mod attack;
+
 // convenience re-exports of common primitives
 pub use primitives::{ct_bytes_eq, ct_min, ct_max, ct_copy_if, ct_lookup, ct_memcmp};
