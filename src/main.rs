@@ -4,20 +4,23 @@
 //! and familiar unix diff-style output formatting.
 
 use clap::{Parser, Subcommand, ValueEnum};
-use ctdiff::{ConstantTimeDiff, SecurityConfig};
+use ctdiff::{ConstantTimeDiff, security::{SecurityConfig, SecurityLevel as NewSecurityLevel}};
+use ctdiff::{DiffBuilder, OutputFormat as NewOutputFormat};
 use ctdiff::attack::{AttackSimulator, AttackScenario};
 use std::fs;
 use std::path::PathBuf;
 use std::time::Instant;
 
 mod output;
-use output::{OutputFormat, DiffFormatter};
+use output::{OutputFormat as LegacyOutputFormat, DiffFormatter};
 
 #[derive(Parser)]
 #[command(name = "ctdiff")]
 #[command(about = "constant-time diff tool - secure file comparison resistant to timing attacks")]
 #[command(version = "0.1.0")]
 #[command(author = "Tanya Arora")]
+#[command(long_about = "ctdiff provides secure, constant-time file comparison resistant to timing attacks.
+Supports multiple output formats including unified diff, JSON, HTML, Git patches, and summaries.")]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -40,7 +43,15 @@ struct Cli {
     
     /// output format
     #[arg(short = 'f', long = "format", default_value = "unified")]
-    format: OutputFormat,
+    format: LegacyOutputFormat,
+    
+    /// new output format (json, html, git, summary)
+    #[arg(long = "new-format")]
+    new_format: Option<NewOutputFormat>,
+    
+    /// output file path
+    #[arg(short = 'o', long = "output")]
+    output_file: Option<PathBuf>,
     
     /// enable colored output
     #[arg(short = 'c', long = "color")]
@@ -142,33 +153,12 @@ enum SecurityLevel {
 
 impl SecurityLevel {
     fn to_config(&self, max_size: Option<usize>) -> SecurityConfig {
-        match self {
-            SecurityLevel::Maximum => {
-                let mut config = SecurityConfig::maximum_security();
-                if let Some(size) = max_size {
-                    config.max_input_size = size * 1024;
-                }
-                // adjust computation limit based on actual padding size
-                if let Some(pad_size) = config.padding_size {
-                    config.max_edit_distance = Some((pad_size * 2).max(1024));
-                }
-                config
-            }
-            SecurityLevel::Balanced => {
-                let mut config = SecurityConfig::balanced();
-                if let Some(size) = max_size {
-                    config.max_input_size = size * 1024;
-                }
-                config
-            }
-            SecurityLevel::Fast => SecurityConfig {
-                max_input_size: max_size.map(|s| s * 1024).unwrap_or(1024 * 1024), // 1mb default
-                pad_inputs: false,
-                padding_size: None,
-                validate_inputs: false,
-                max_edit_distance: None,
-            }
-        }
+        let new_level = match self {
+            SecurityLevel::Maximum => NewSecurityLevel::Maximum,
+            SecurityLevel::Balanced => NewSecurityLevel::Balanced,
+            SecurityLevel::Fast => NewSecurityLevel::Fast,
+        };
+        new_level.to_config(max_size)
     }
 }
 
@@ -227,7 +217,7 @@ fn run_diff(cli: &Cli, file1: &PathBuf, file2: &PathBuf) -> Result<i32, Box<dyn 
         config.max_edit_distance = None; // remove computation limits when forced
     }
     
-    let differ = ConstantTimeDiff::new(config);
+    let differ = ConstantTimeDiff::new(config.to_legacy());
     
     // perform diff with timing measurement
     let start_time = Instant::now();
@@ -238,17 +228,49 @@ fn run_diff(cli: &Cli, file1: &PathBuf, file2: &PathBuf) -> Result<i32, Box<dyn 
     let files_identical = result.edit_distance == 0;
     
     if !cli.quiet {
-        // format and display output
-        let formatter = DiffFormatter::new(cli.format.clone(), cli.color, cli.context);
-        let output = formatter.format_diff(
-            &file1.display().to_string(),
-            &file2.display().to_string(),
-            &file1_data,
-            &file2_data,
-            &result,
-        )?;
+        let output = if let Some(new_format) = &cli.new_format {
+            // use new library API
+            let diff_builder = DiffBuilder::new()
+                .security_level(match cli.security_level {
+                    SecurityLevel::Maximum => NewSecurityLevel::Maximum,
+                    SecurityLevel::Balanced => NewSecurityLevel::Balanced,
+                    SecurityLevel::Fast => NewSecurityLevel::Fast,
+                })
+                .output_format(new_format.clone())
+                .context_lines(cli.context)
+                .color(cli.color)
+                .build()
+                .map_err(|e| format!("diff builder error: {}", e))?;
+            
+            let result = diff_builder.compare_files_named(
+                &file1.display().to_string(),
+                &file2.display().to_string(),
+                &file1_data,
+                &file2_data,
+            )
+            .map_err(|e| format!("diff comparison error: {}", e))?;
+            
+            result.format()
+                .map_err(|e| format!("format error: {}", e))?
+        } else {
+            // use legacy formatter
+            let formatter = DiffFormatter::new(cli.format.clone(), cli.color, cli.context);
+            formatter.format_diff(
+                &file1.display().to_string(),
+                &file2.display().to_string(),
+                &file1_data,
+                &file2_data,
+                &result,
+            )?
+        };
         
-        print!("{}", output);
+        // output to file or stdout
+        if let Some(output_path) = &cli.output_file {
+            std::fs::write(output_path, &output)?;
+            eprintln!("Output written to: {}", output_path.display());
+        } else {
+            print!("{}", output);
+        }
         
         // show timing information if requested
         if cli.show_timing {
@@ -354,7 +376,7 @@ fn run_attack_demo(
         
         let mut timer = PrecisionTimer::new();
         let vulnerable_diff = VulnerableDiff::new();
-        let secure_diff = ctdiff::ConstantTimeDiff::new(config);
+        let secure_diff = ctdiff::ConstantTimeDiff::new(config.to_legacy());
         
         // measure vulnerable implementation
         let vulnerable_times: Vec<_> = (0..iterations).map(|i| {

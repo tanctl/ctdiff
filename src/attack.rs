@@ -5,7 +5,7 @@
 
 use crate::timing::{PrecisionTimer, TimingStatistics, TimingComparison, TimingMeasurement};
 use crate::vulnerable::VulnerableDiff;
-use crate::{ConstantTimeDiff, SecurityConfig};
+use crate::{ConstantTimeDiff, security::SecurityConfig};
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
@@ -198,7 +198,7 @@ impl AttackSimulator {
     pub fn new() -> Self {
         Self {
             vulnerable_diff: VulnerableDiff::new(),
-            secure_diff: ConstantTimeDiff::new(SecurityConfig::balanced()),
+            secure_diff: ConstantTimeDiff::new(crate::security::SecurityConfig::balanced(None).to_legacy()),
             timer: PrecisionTimer::new(),
         }
     }
@@ -207,7 +207,7 @@ impl AttackSimulator {
     pub fn with_security_config(config: SecurityConfig) -> Self {
         Self {
             vulnerable_diff: VulnerableDiff::new(),
-            secure_diff: ConstantTimeDiff::new(config),
+            secure_diff: ConstantTimeDiff::new(config.to_legacy()),
             timer: PrecisionTimer::new(),
         }
     }

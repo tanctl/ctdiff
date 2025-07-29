@@ -12,6 +12,7 @@ use subtle::{Choice, ConditionallySelectable};
 /// computes edit distance and optimal edit script without early termination
 /// or content-dependent branching. always touches same memory locations
 /// regardless of input similarity.
+#[derive(Clone, Debug)]
 pub struct ConstantTimeDiff {
     config: SecurityConfig,
 }
@@ -20,6 +21,11 @@ impl ConstantTimeDiff {
     /// create new diff computer with given security configuration
     pub fn new(config: SecurityConfig) -> Self {
         Self { config }
+    }
+    
+    /// get the security configuration
+    pub fn config(&self) -> &SecurityConfig {
+        &self.config
     }
 
     /// compute constant-time diff between two byte sequences
