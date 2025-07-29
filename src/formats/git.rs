@@ -143,7 +143,7 @@ struct GitHunkBuilder {
     lines: Vec<GitHunkLine>,
     old_start: usize,
     new_start: usize,
-    start_index: usize,
+    _start_index: usize,
     last_change_index: usize,
 }
 
@@ -153,7 +153,7 @@ impl GitHunkBuilder {
             lines: Vec::new(),
             old_start: start_index + 1,
             new_start: start_index + 1,
-            start_index,
+            _start_index: start_index,
             last_change_index: start_index,
         }
     }

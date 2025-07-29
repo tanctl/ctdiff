@@ -30,6 +30,23 @@ tokio-test = "0.4"
 name = "primitives"
 harness = false
 
+# library usage examples
+[[example]]
+name = "basic_usage"
+path = "examples/library/basic_usage.rs"
+
+[[example]]
+name = "security_demo"
+path = "examples/library/security_demo.rs"
+
+[[example]]
+name = "performance_comparison"
+path = "examples/library/performance_comparison.rs"
+
+[[example]]
+name = "integration_examples"
+path = "examples/library/integration_examples.rs"
+
 [profile.release]
 # ensure optimizations don't break constant-time guarantees
 codegen-units = 1
