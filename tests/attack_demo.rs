@@ -6,7 +6,7 @@
 use ctdiff::attack::{AttackSimulator, AttackScenario};
 use ctdiff::timing::{PrecisionTimer, TimingStatistics};
 use ctdiff::vulnerable::VulnerableDiff;
-use ctdiff::{ConstantTimeDiff, SecurityConfig};
+use ctdiff::{ConstantTimeDiff, security::SecurityConfig};
 use std::time::Duration;
 
 #[test]
@@ -44,7 +44,7 @@ fn test_vulnerable_vs_secure_timing_differences() {
     // vulnerable and secure implementations on crafted inputs
     
     let vulnerable_diff = VulnerableDiff::new();
-    let secure_diff = ConstantTimeDiff::new(SecurityConfig::balanced());
+    let secure_diff = ConstantTimeDiff::new(SecurityConfig::balanced(None).to_legacy());
     let mut timer = PrecisionTimer::new();
     
     // create inputs designed to maximize timing differences
