@@ -7,6 +7,7 @@ use subtle::{Choice, ConditionallySelectable};
 
 /// constant-time myers diff algorithm implementation
 /// computes edit distance and an edit script without early termination or content-dependent branching
+#[derive(Clone, Debug)]
 pub struct ConstantTimeDiff {
     config: SecurityConfig,
 }
@@ -15,6 +16,11 @@ impl ConstantTimeDiff {
     /// create new diff computer with the given security configuration
     pub fn new(config: SecurityConfig) -> Self {
         Self { config }
+    }
+    
+    /// get the security configuration
+    pub fn config(&self) -> &SecurityConfig {
+        &self.config
     }
 
     /// compute constant-time diff between two byte sequences
