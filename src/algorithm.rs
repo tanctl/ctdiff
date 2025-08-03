@@ -47,10 +47,16 @@ impl ConstantTimeDiff {
         let matrix = self.compute_edit_matrix(&padded_a, &padded_b)?;
         
         // extract edit script from matrix using constant-time backtracking
-        let operations = self.extract_edit_script_constant_time(&padded_a, &padded_b, &matrix)?;
+        let operations = if let Some(_pad_size) = self.config.effective_padding_size(a.len(), b.len()) {
+            // for padded inputs, generate operations but limit to original lengths
+            self.extract_edit_script_with_limits(&padded_a, &padded_b, &matrix, a.len(), b.len())?
+        } else {
+            // for unpadded inputs, use normal extraction
+            self.extract_edit_script_constant_time(&padded_a, &padded_b, &matrix)?
+        };
         
-        // filter out padding-related operations for final result
-        let filtered_ops = self.filter_padding_operations(&operations, a.len(), b.len());
+        // no need to filter if we generated correctly
+        let filtered_ops = operations;
         
         // compute actual edit distance from filtered operations
         let edit_distance = filtered_ops.iter()
@@ -151,8 +157,8 @@ impl ConstantTimeDiff {
             let at_left_boundary = Choice::from((j == 0) as u8);
             let in_interior = Choice::from(((i > 0) && (j > 0)) as u8);
 
-            // get matrix values with bounds checking (use max for out-of-bounds)
-            let current = if i == 0 || j == 0 { u32::MAX } else { matrix[i][j] };
+            // get matrix values with bounds checking
+            let current = matrix[i][j];
             let diagonal = if i == 0 || j == 0 { u32::MAX } else { matrix[i-1][j-1] };
             let delete_pred = if i == 0 { u32::MAX } else { matrix[i-1][j] };
             let insert_pred = if j == 0 { u32::MAX } else { matrix[i][j-1] };
@@ -216,54 +222,87 @@ impl ConstantTimeDiff {
         Ok(operations)
     }
 
-    /// filter out operations related to padding bytes
+    /// extract edit script with limits for padded inputs
     /// 
-    /// removes padding-related operations while preserving timing properties
-    /// by always scanning entire operation list.
-    fn filter_padding_operations(&self, operations: &[DiffOperation], orig_len_a: usize, orig_len_b: usize) -> Vec<DiffOperation> {
-        const PAD_BYTE: u8 = 0xFF;
-        let mut filtered = Vec::new();
-        let mut pos_a = 0;
-        let mut pos_b = 0;
-        
-        // scan all operations but only include non-padding ones
-        for op in operations {
-            let (include_op, new_pos_a, new_pos_b) = match op {
-                DiffOperation::Keep => {
-                    // include only if both positions are within original bounds
-                    let include = pos_a < orig_len_a && pos_b < orig_len_b;
-                    (include, pos_a + 1, pos_b + 1)
-                }
-                DiffOperation::Delete => {
-                    // include only if source position is within original bounds
-                    let include = pos_a < orig_len_a;
-                    (include, pos_a + 1, pos_b)
-                }
-                DiffOperation::Insert(byte) => {
-                    // include only if target position is within bounds and not padding
-                    let include = pos_b < orig_len_b && *byte != PAD_BYTE;
-                    (include, pos_a, pos_b + 1)
-                }
-                DiffOperation::Substitute(byte) => {
-                    // include if within bounds and not substituting with padding
-                    // but allow substitution if we're still within original bounds
-                    let within_bounds = pos_a < orig_len_a && pos_b < orig_len_b;
-                    let not_padding = *byte != PAD_BYTE;
-                    let include = within_bounds && not_padding;
-                    (include, pos_a + 1, pos_b + 1)
-                }
+    /// generates edit script that only operates on original data lengths,
+    /// avoiding the need for post-processing filtering.
+    fn extract_edit_script_with_limits(&self, a: &[u8], b: &[u8], matrix: &[Vec<u32>], orig_len_a: usize, orig_len_b: usize) -> Result<Vec<DiffOperation>, DiffError> {
+        let mut operations = Vec::new();
+        let mut i = orig_len_a; // start from original lengths, not padded lengths
+        let mut j = orig_len_b;
+
+        // backtrack through matrix using constant-time path selection
+        while i > 0 || j > 0 {
+            // handle boundary conditions with constant-time checks
+            let at_top_boundary = Choice::from((i == 0) as u8);
+            let at_left_boundary = Choice::from((j == 0) as u8);
+            let in_interior = Choice::from(((i > 0) && (j > 0)) as u8);
+
+            // get matrix values with bounds checking
+            let current = matrix[i][j];
+            let diagonal = if i == 0 || j == 0 { u32::MAX } else { matrix[i-1][j-1] };
+            let delete_pred = if i == 0 { u32::MAX } else { matrix[i-1][j] };
+            let insert_pred = if j == 0 { u32::MAX } else { matrix[i][j-1] };
+
+            // compute costs for each possible transition
+            let chars_equal = if i == 0 || j == 0 {
+                Choice::from(0)
+            } else {
+                Choice::from(ct_bytes_eq(&[a[i-1]], &[b[j-1]]) as u8)
             };
             
-            pos_a = new_pos_a;
-            pos_b = new_pos_b;
+            let diagonal_cost = u32::conditional_select(&1, &0, chars_equal);
+            let expected_diagonal = diagonal.saturating_add(diagonal_cost);
+            let expected_delete = delete_pred.saturating_add(1);
+            let expected_insert = insert_pred.saturating_add(1);
+
+            // determine which transition to take using constant-time comparison
+            let came_from_diagonal = Choice::from((expected_diagonal == current) as u8) & in_interior;
+            let came_from_delete = Choice::from((expected_delete == current) as u8) & Choice::from((i > 0) as u8) & !came_from_diagonal;
+            let came_from_insert = Choice::from((expected_insert == current) as u8) & Choice::from((j > 0) as u8) & !came_from_diagonal & !came_from_delete;
             
-            if include_op {
-                filtered.push(*op);
-            }
+            // at boundaries, force appropriate operations
+            let force_insert = at_top_boundary & Choice::from((j > 0) as u8);
+            let force_delete = at_left_boundary & Choice::from((i > 0) as u8);
+            
+            let final_insert = came_from_insert | force_insert;
+            let final_delete = came_from_delete | force_delete;
+            let final_diagonal = came_from_diagonal;
+
+            // select operation type using constant-time conditional
+            let op = if final_diagonal.into() {
+                if chars_equal.into() {
+                    DiffOperation::Keep
+                } else {
+                    DiffOperation::Substitute(if j > 0 { b[j-1] } else { 0 })
+                }
+            } else if final_delete.into() {
+                DiffOperation::Delete
+            } else if final_insert.into() {
+                DiffOperation::Insert(if j > 0 { b[j-1] } else { 0 })
+            } else {
+                return Err(DiffError::AlgorithmError("no valid transition found".to_string()));
+            };
+
+            operations.push(op);
+
+            // update positions using constant-time conditional arithmetic
+            let move_i = final_diagonal | final_delete;
+            let move_j = final_diagonal | final_insert;
+            
+            // constant-time position updates
+            let i_delta = u8::conditional_select(&0, &1, move_i) as usize;
+            let j_delta = u8::conditional_select(&0, &1, move_j) as usize;
+            
+            i = i.saturating_sub(i_delta);
+            j = j.saturating_sub(j_delta);
         }
-        
-        filtered
+
+        // reverse operations to get forward edit script
+        operations.reverse();
+        Ok(operations)
     }
+
 }
 
 /// simplified constant-time diff function for common use cases

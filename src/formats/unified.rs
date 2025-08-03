@@ -2,7 +2,7 @@
 //! 
 //! standard unified diff format compatible with unix diff tools
 
-use crate::{error::{Error, Result}, types::{DiffResult, DiffOperation}};
+use crate::{error::Result, types::DiffResult};
 use crate::formats::FormatOptions;
 use colored::Colorize;
 
@@ -11,7 +11,7 @@ pub fn format(
     left_name: &str,
     right_name: &str,
     left_data: &[u8],
-    right_data: &[u8],
+    _right_data: &[u8],
     result: &DiffResult,
     context_lines: usize,
     enable_color: bool,
@@ -57,7 +57,7 @@ pub fn format(
 
 /// reconstructs the right-side text from operations
 fn reconstruct_right_text(left_data: &[u8], result: &DiffResult) -> Result<Vec<u8>> {
-    result.apply_to(left_data).map_err(|e| Error::format(format!("failed to reconstruct text: {}", e)))
+    result.apply_to(left_data).map_err(|e| crate::Error::format(format!("failed to reconstruct text: {}", e)))
 }
 
 /// builds hunks with proper context lines

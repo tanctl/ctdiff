@@ -1,4 +1,5 @@
-use ctdiff::*;
+use ctdiff::{ConstantTimeDiff, constant_time_diff};
+use ctdiff::types::{SecurityConfig, DiffResult, DiffOperation, DiffError};
 use std::time::Instant;
 
 // helper function to create no-padding config for cleaner tests

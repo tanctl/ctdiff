@@ -160,7 +160,7 @@ fn format_detailed_breakdown(result: &DiffResult, options: &FormatOptions) -> St
 /// formats line-based statistics for text files
 fn format_line_statistics(
     left_data: &[u8],
-    right_data: &[u8],
+    _right_data: &[u8],
     result: &DiffResult,
     _options: &FormatOptions,
 ) -> Result<String> {

@@ -106,33 +106,35 @@ impl DiffResult {
     /// during reconstruction.
     pub fn apply_to(&self, input: &[u8]) -> Result<Vec<u8>, DiffError> {
         if input.len() != self.original_len_a {
-            return Err(DiffError::InvalidInput("input length mismatch".to_string()));
+            return Err(DiffError::InvalidInput(format!("input length mismatch: expected {}, got {}", self.original_len_a, input.len())));
         }
 
         let mut result = Vec::new();
         let mut input_pos = 0;
 
-        for op in &self.operations {
+        for (op_idx, op) in self.operations.iter().enumerate() {
             match op {
                 DiffOperation::Keep => {
                     if input_pos >= input.len() {
-                        return Err(DiffError::InvalidScript("script extends beyond input".to_string()));
+                        return Err(DiffError::InvalidScript(format!("script extends beyond input at operation {} (Keep): input_pos={}, input_len={}", op_idx, input_pos, input.len())));
                     }
                     result.push(input[input_pos]);
                     input_pos += 1;
                 }
                 DiffOperation::Insert(byte) => {
                     result.push(*byte);
+                    // no input_pos increment for insert
                 }
                 DiffOperation::Delete => {
                     if input_pos >= input.len() {
-                        return Err(DiffError::InvalidScript("script extends beyond input".to_string()));
+                        return Err(DiffError::InvalidScript(format!("script extends beyond input at operation {} (Delete): input_pos={}, input_len={}", op_idx, input_pos, input.len())));
                     }
                     input_pos += 1;
+                    // no result push for delete
                 }
                 DiffOperation::Substitute(byte) => {
                     if input_pos >= input.len() {
-                        return Err(DiffError::InvalidScript("script extends beyond input".to_string()));
+                        return Err(DiffError::InvalidScript(format!("script extends beyond input at operation {} (Substitute): input_pos={}, input_len={}", op_idx, input_pos, input.len())));
                     }
                     result.push(*byte);
                     input_pos += 1;
@@ -141,7 +143,7 @@ impl DiffResult {
         }
 
         if input_pos != input.len() {
-            return Err(DiffError::InvalidScript("script does not consume entire input".to_string()));
+            return Err(DiffError::InvalidScript(format!("script does not consume entire input: consumed {}, expected {}", input_pos, input.len())));
         }
 
         Ok(result)
