@@ -1,6 +1,5 @@
-//! summary statistics format implementation
-//! 
-//! high-level diff statistics and summary information
+//! Summary statistics format implementation
+//! High-level diff statistics and summary information
 
 use crate::{error::Result, types::{DiffResult, DiffOperation}};
 use crate::formats::FormatOptions;
