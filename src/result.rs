@@ -3,7 +3,7 @@
 //! provides rich result objects with multiple output format support
 
 use crate::{
-    error::{Error, Result},
+    error::Result,
     formats::{OutputFormat, FormatOptions, unified, json, html, git, summary},
     types::DiffResult as LegacyDiffResult,
 };

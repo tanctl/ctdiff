@@ -20,7 +20,7 @@ pub enum OutputFormat {
 pub struct DiffFormatter {
     format: OutputFormat,
     use_color: bool,
-    context_lines: usize,
+    _context_lines: usize,
 }
 
 impl DiffFormatter {
@@ -28,7 +28,7 @@ impl DiffFormatter {
         Self {
             format,
             use_color,
-            context_lines,
+            _context_lines: context_lines,
         }
     }
     
